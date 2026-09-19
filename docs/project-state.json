@@ -20,10 +20,11 @@
   "publication": {
     "repository": "quangtaiqn/TypeSafe_Plugin",
     "branch": "main",
-    "commit": "4dde806ca28b6ebebc36063228023cd717edcf95",
-    "tree": "b2442b4e2c72d31e7088d34978b418ecb2395214",
+    "sourceCommit": "4dde806ca28b6ebebc36063228023cd717edcf95",
+    "sourceTree": "b2442b4e2c72d31e7088d34978b418ecb2395214",
     "ciRun": "https://github.com/quangtaiqn/TypeSafe_Plugin/actions/runs/35466116217",
-    "ciConclusion": "success"
+    "ciConclusion": "success",
+    "evidenceFollowUpCommit": "a899515"
   },
   "nextStep": "Provision an authorized HTTPS/OAuth/provider canary before claiming CP5-CP8 live readiness"
 }
