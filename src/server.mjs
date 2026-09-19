@@ -32,7 +32,7 @@ function concurrencyLimitError() {
 
 function errorDetails(error) {
   return {
-    code: error?.code ?? "client_error",
+    code: typeof error?.code === "string" ? error.code : "client_error",
     message: error instanceof Error ? error.message : "Unknown TypeSafe request failure",
     retryable: Boolean(error?.retryable),
     ...(Number.isInteger(error?.retryAfterSeconds) ? { retryAfterSeconds: error.retryAfterSeconds } : {}),

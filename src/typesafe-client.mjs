@@ -151,13 +151,36 @@ export async function callSystemOne(input, options = {}) {
   let timedOut = false;
   let cancelledByCaller = false;
   const removeParentAbort = composeAbortSignal(options.signal, controller);
-  const onCallerAbort = () => { cancelledByCaller = true; };
+  let rejectCallerAbort;
+  const callerAbortPromise = new Promise((_, reject) => { rejectCallerAbort = reject; });
+  const cancelledError = () => new TypeSafeClientError("TypeSafe request was cancelled", { code: "cancelled", retryable: false });
+  const timeoutError = () => new TypeSafeClientError("TypeSafe request timed out", { code: "timeout", retryable: true });
+  const unavailableError = () => new TypeSafeClientError("TypeSafe API is unavailable", { code: "unavailable", retryable: true });
+  const transportError = () => {
+    if (timedOut) return timeoutError();
+    if (cancelledByCaller || controller.signal.aborted) return cancelledError();
+    return unavailableError();
+  };
+  const onCallerAbort = () => {
+    if (cancelledByCaller) return;
+    cancelledByCaller = true;
+    controller.abort(options.signal?.reason);
+    rejectCallerAbort(cancelledError());
+  };
   if (options.signal) options.signal.addEventListener("abort", onCallerAbort, { once: true });
-  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, configuration.timeoutMs);
+  if (options.signal?.aborted) onCallerAbort();
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(timeoutError());
+    }, configuration.timeoutMs);
+  });
   try {
     let response;
     try {
-      response = await fetchImplementation(endpoint, {
+      response = await Promise.race([fetchImplementation(endpoint, {
         method: "POST",
         headers: {
           authorization: `Bearer ${configuration.apiKey}`,
@@ -166,11 +189,10 @@ export async function callSystemOne(input, options = {}) {
         body: JSON.stringify({ ...validatedInput, model: configuration.model }),
         signal: controller.signal,
         redirect: "error",
-      });
+      }), timeoutPromise, callerAbortPromise]);
     } catch (error) {
-      if (timedOut) throw new TypeSafeClientError("TypeSafe request timed out", { code: "timeout", retryable: true });
-      if (cancelledByCaller || controller.signal.aborted) throw new TypeSafeClientError("TypeSafe request was cancelled", { code: "cancelled", retryable: false });
-      throw new TypeSafeClientError("TypeSafe API is unavailable", { code: "unavailable", retryable: true });
+      if (error instanceof TypeSafeClientError) throw error;
+      throw transportError();
     }
     if (!response.ok) {
       const retryAfter = retryAfterValue(response);
@@ -183,7 +205,13 @@ export async function callSystemOne(input, options = {}) {
         retryable: isRetryableStatus(response.status),
       });
     }
-    const result = await readResponseJson(response, configuration.maxResponseBytes);
+    let result;
+    try {
+      result = await Promise.race([readResponseJson(response, configuration.maxResponseBytes), timeoutPromise, callerAbortPromise]);
+    } catch (error) {
+      if (error instanceof TypeSafeResponseError || error instanceof TypeSafeClientError) throw error;
+      throw transportError();
+    }
     try {
       return validateSystemOneResult(result, validatedInput.questions);
     } catch (error) {

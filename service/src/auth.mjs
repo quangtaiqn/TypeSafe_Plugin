@@ -104,7 +104,7 @@ function verifySignature(signingInput, signature, jwk) {
   catch { return false; }
 }
 
-async function readBoundedText(response, maxBytes) {
+async function readBoundedText(response, maxBytes, signal) {
   if (!response.body || typeof response.body.getReader !== "function") {
     const text = await response.text();
     if (Buffer.byteLength(text, "utf8") > maxBytes) throw new AuthenticationError("authorization key set is too large", { status: 503, code: "auth_unavailable" });
@@ -113,6 +113,8 @@ async function readBoundedText(response, maxBytes) {
   const reader = response.body.getReader();
   const chunks = [];
   let size = 0;
+  const onAbort = () => { reader.cancel().catch(() => {}); };
+  signal?.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
       const next = await reader.read();
@@ -125,6 +127,7 @@ async function readBoundedText(response, maxBytes) {
       chunks.push(Buffer.from(next.value));
     }
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     reader.releaseLock?.();
   }
   return Buffer.concat(chunks).toString("utf8");
@@ -141,35 +144,36 @@ export function createAuthVerifier({ environment = process.env, fetchImplementat
     const controller = new AbortController();
     let timer;
     let response;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("authorization key service timed out"));
+      }, configuration.jwksTimeoutMs);
+    });
     try {
       const request = fetchImplementation(configuration.jwksUrl, {
         headers: { accept: "application/json" },
         redirect: "error",
         signal: controller.signal,
       });
-      const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          reject(new Error("authorization key service timed out"));
-        }, configuration.jwksTimeoutMs);
-      });
       response = await Promise.race([request, timeout]);
-    } catch {
+      if (!response.ok) throw new AuthenticationError("authorization key service rejected the request", { status: 503, code: "auth_unavailable" });
+      let payload;
+      try { payload = JSON.parse(await Promise.race([readBoundedText(response, configuration.jwksMaxResponseBytes, controller.signal), timeout])); }
+      catch (error) {
+        if (error instanceof AuthenticationError) throw error;
+        throw new AuthenticationError("authorization key set is invalid", { status: 503, code: "auth_unavailable" });
+      }
+      if (!Array.isArray(payload?.keys)) throw new AuthenticationError("authorization key set is invalid", { status: 503, code: "auth_unavailable" });
+      cachedKeys = payload.keys.filter((key) => key?.kid && key?.kty === "RSA");
+      cachedAt = now();
+      return cachedKeys;
+    } catch (error) {
+      if (error instanceof AuthenticationError) throw error;
       throw new AuthenticationError("authorization key service is unavailable", { status: 503, code: "auth_unavailable" });
     } finally {
       if (timer) clearTimeout(timer);
     }
-    if (!response.ok) throw new AuthenticationError("authorization key service rejected the request", { status: 503, code: "auth_unavailable" });
-    let payload;
-    try { payload = JSON.parse(await readBoundedText(response, configuration.jwksMaxResponseBytes)); }
-    catch (error) {
-      if (error instanceof AuthenticationError) throw error;
-      throw new AuthenticationError("authorization key set is invalid", { status: 503, code: "auth_unavailable" });
-    }
-    if (!Array.isArray(payload?.keys)) throw new AuthenticationError("authorization key set is invalid", { status: 503, code: "auth_unavailable" });
-    cachedKeys = payload.keys.filter((key) => key?.kid && key?.kty === "RSA");
-    cachedAt = now();
-    return cachedKeys;
   }
 
   async function loadKeys(force = false) {

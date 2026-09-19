@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 
 const excludedDirectories = new Set([".git", ".recovery", ".checkpoints", "node_modules", "coverage", "dist"]);
 const findingPatterns = [
-  { category: "bearer-token", pattern: /Authorization\s*:\s*Bearer\s+[A-Za-z0-9._~+/=-]{16,}/i },
+  { category: "bearer-token", pattern: /["']?Authorization["']?\s*:\s*["']?Bearer\s+[A-Za-z0-9._~+/=-]{16,}/i },
   { category: "provider-token", pattern: /(?:ghp_|github_pat_|xox[baprs]-|sk-)[A-Za-z0-9_-]{12,}/ },
   { category: "private-key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ },
   { category: "api-key-assignment", pattern: /(?<!process\.env\.)\bTYPESAFE_API_KEY\s*=(?!=)\s*["']?(?!replace[-_]?with|replace[-_]?in|your[-_]?|fake[-_]?|test[-_]?|secret[-_]?|example[-_]?|<|REPLACE_WITH|YOUR_|\$\{)[^\s"']+/i },
