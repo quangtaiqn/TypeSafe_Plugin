@@ -9,7 +9,7 @@
   },
   "preparedChecks": [
     "No local paths or stdio commands in the mobile metadata",
-    "OAuth expiry/revoke/reconnect scenarios documented",
+    "OAuth expiry/revoke/reconnect runbook and expected outcomes documented",
     "Tool-first structured responses; no inference-generating UI",
     "Choice/Noul/Score and batch canary fixtures available"
   ],

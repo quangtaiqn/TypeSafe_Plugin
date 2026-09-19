@@ -1,6 +1,6 @@
 # Recovery and resume
 
-The durable recovery tool is `scripts/recovery.mjs`. It writes an allowlisted, hashed snapshot into the ignored `.recovery/` directory, writes the `COMPLETE` marker last, validates every file before selection, and restores only into a new isolated destination.
+The durable recovery tool is `scripts/recovery.mjs`. It writes an explicit-allowlist, secret-scanned, hashed snapshot into the ignored `.recovery/` directory, writes the `COMPLETE` marker last, validates every file before selection, and restores only into a new isolated destination. The initial source baseline is normalized as `R0-20260920-source` with sequence `0`; `R0-recovery-ready` and later checkpoints use the same manifest schema.
 
 ```powershell
 node scripts/recovery.mjs progress --file .recovery/progress.json --run-id run-id --phase CP2 --task http --next test

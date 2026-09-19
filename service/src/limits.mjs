@@ -20,6 +20,8 @@ export function getLimitConfiguration(environment = process.env) {
     windowMs: integer(environment, "MCP_WINDOW_MS", 60_000, 1000, 86_400_000),
     maxRequestsPerWindow: integer(environment, "MCP_MAX_REQUESTS_PER_WINDOW", 60, 1, 1_000_000),
     maxServiceRequestsPerWindow: integer(environment, "MCP_MAX_SERVICE_REQUESTS_PER_WINDOW", 600, 1, 10_000_000),
+    authWindowMs: integer(environment, "MCP_AUTH_WINDOW_MS", 60_000, 1000, 86_400_000),
+    maxAuthRequestsPerWindow: integer(environment, "MCP_MAX_AUTH_REQUESTS_PER_WINDOW", 120, 1, 1_000_000),
   };
 }
 

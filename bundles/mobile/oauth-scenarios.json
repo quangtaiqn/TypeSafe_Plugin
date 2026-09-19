@@ -1,0 +1,23 @@
+{
+  "status": "RUNBOOK_ONLY_UNTIL_LIVE_DEPLOYMENT",
+  "scenarios": [
+    {
+      "id": "expired-token",
+      "setup": "Use a token whose exp is before the service clock.",
+      "expected": "401 invalid_token and no TypeSafe upstream call.",
+      "localCoverage": "test/cloud-http.test.mjs"
+    },
+    {
+      "id": "revoked-grant-or-signing-key",
+      "setup": "Revoke the OAuth grant or remove the signing key at the authorized issuer.",
+      "expected": "The next MCP request is denied; cached credentials are not treated as proof of access.",
+      "liveRequired": true
+    },
+    {
+      "id": "reconnect-after-revocation",
+      "setup": "Complete issuer re-authentication after revocation and obtain a fresh token.",
+      "expected": "The fresh token can discover and call the tool; the client does not reuse the revoked token.",
+      "liveRequired": true
+    }
+  ]
+}

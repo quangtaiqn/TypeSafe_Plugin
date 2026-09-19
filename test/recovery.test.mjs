@@ -64,6 +64,20 @@ test("selector ignores WIP and corrupt checkpoints and restores the last valid C
   assert.equal(await readFile(path.join(destination, "src", "main.mjs"), "utf8"), "export const answer = 42;\n");
 });
 
+test("recovery fails closed for unallowlisted files and secret-like source content", async () => {
+  const unallowlisted = await fixture();
+  await writeFile(path.join(unallowlisted.source, "notes.txt"), "private notes\n");
+  const rejectedPath = run(["create", "--id", "CP04-unallowlisted", "--sequence", "4", "--status", "COMPLETE", "--source", unallowlisted.source, "--recovery-root", unallowlisted.recovery]);
+  assert.equal(rejectedPath.status, 1);
+  assert.match(rejectedPath.stderr, /not allowlisted/i);
+
+  const secretContent = await fixture();
+  await writeFile(path.join(secretContent.source, "src", "leak.mjs"), ["Authorization: Bearer ", "a".repeat(25), "\n"].join(""));
+  const rejectedContent = run(["create", "--id", "CP05-secret-content", "--sequence", "5", "--status", "COMPLETE", "--source", secretContent.source, "--recovery-root", secretContent.recovery]);
+  assert.equal(rejectedContent.status, 1);
+  assert.match(rejectedContent.stderr, /secret-like content/i);
+});
+
 test("progress journal is written atomically and excludes secret-like values", async () => {
   const { root } = await fixture();
   const journal = path.join(root, "progress.json");

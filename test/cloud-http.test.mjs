@@ -12,8 +12,8 @@ function base64url(value) {
   return Buffer.from(value).toString("base64url");
 }
 
-function token({ sub = "quang", scope = "typesafe:invoke", iss = issuer, exp = Math.floor(Date.now() / 1000) + 300 } = {}) {
-  const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid: "test-key" }));
+function token({ sub = "quang", scope = "typesafe:invoke", iss = issuer, exp = Math.floor(Date.now() / 1000) + 300, kid = "test-key" } = {}) {
+  const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT", kid }));
   const payload = base64url(JSON.stringify({ sub, scope, iss, aud: "typesafe-mcp", exp }));
   const signingInput = `${header}.${payload}`;
   const signature = createSign("RSA-SHA256").update(signingInput).sign(privateKey).toString("base64url");
@@ -46,6 +46,7 @@ function modern(method, id, params = {}) {
 
 function createTestApp(overrides = {}) {
   const calls = [];
+  let jwksCalls = 0;
   const environment = {
     NODE_ENV: "test",
     TYPESAFE_API_KEY: "fake-typesafe-key",
@@ -61,7 +62,10 @@ function createTestApp(overrides = {}) {
     ...overrides,
   };
   const fetchImplementation = async (url, options = {}) => {
-    if (String(url) === jwksUrl) return new Response(JSON.stringify({ keys: [publicJwk] }), { status: 200, headers: { "content-type": "application/json" } });
+    if (String(url) === jwksUrl) {
+      jwksCalls += 1;
+      return new Response(JSON.stringify({ keys: [publicJwk] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     calls.push({ url: String(url), options, body: JSON.parse(options.body) });
     return new Response(JSON.stringify({
       model: "jev-test",
@@ -70,7 +74,7 @@ function createTestApp(overrides = {}) {
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const app = createServiceApp({ environment, fetchImplementation });
-  return { app, calls };
+  return { app, calls, jwksCalls: () => jwksCalls };
 }
 
 async function request(app, body, jwt = token(), path = "/mcp") {
@@ -140,6 +144,14 @@ test("cloud auth enforces issuer, subject, scope and expiry without calling upst
   assert.equal(calls.length, 0);
 });
 
+test("cloud auth coalesces and throttles unknown JWT key refreshes", async (t) => {
+  const { app, jwksCalls } = createTestApp({ AUTH_UNKNOWN_KID_REFRESH_MS: "60000" });
+  t.after(() => app.close());
+  assert.equal((await request(app, modern("server/discover", 1), token({ kid: "unknown-a" }))).status, 401);
+  assert.equal((await request(app, modern("server/discover", 2), token({ kid: "unknown-b" }))).status, 401);
+  assert.equal(jwksCalls(), 2);
+});
+
 test("cloud quota and request-size limits fail before the TypeSafe call", async (t) => {
   const quota = createTestApp({ MCP_MAX_REQUESTS_PER_WINDOW: "1" });
   const sized = createTestApp({ MCP_MAX_REQUEST_BYTES: "32" });
@@ -153,4 +165,15 @@ test("cloud quota and request-size limits fail before the TypeSafe call", async 
   const oversized = await request(sized.app, modern("server/discover", 1));
   assert.equal(oversized.status, 413);
   assert.equal(sized.calls.length, 0);
+});
+
+test("pre-auth attempt limits run before JWT verification and upstream calls", async (t) => {
+  const { app, calls } = createTestApp({ MCP_MAX_AUTH_REQUESTS_PER_WINDOW: "1" });
+  t.after(() => app.close());
+  const unauthenticated = await app.fetch(new Request("https://cloud.test/mcp", { method: "POST", body: JSON.stringify(modern("server/discover", 1)) }));
+  assert.equal(unauthenticated.status, 401);
+  const throttled = await request(app, modern("server/discover", 2));
+  assert.equal(throttled.status, 429);
+  assert.equal((await throttled.json()).error.code, "quota_exceeded");
+  assert.equal(calls.length, 0);
 });

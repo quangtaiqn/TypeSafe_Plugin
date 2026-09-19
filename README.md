@@ -2,7 +2,7 @@
 
 Cloud-ready TypeSafe Jev System One MCP service plus a Codex plugin surface. The only tool is `system_one(state, questions)`, preserving typed `choice`, `score`, and `noul` judgments.
 
-Current repository status: local implementation and packaging are ready for verification; a public HTTPS endpoint, provider canary, host E2E, and OpenAI submission are intentionally pending. No provider key, OAuth token, cloud credential, or user data belongs in this repository.
+Current repository status: source implementation and packaging are published to GitHub with CI green; a public HTTPS endpoint, provider canary, host E2E, and OpenAI submission are intentionally pending. No provider key, OAuth token, cloud credential, or user data belongs in this repository.
 
 ## Layout
 

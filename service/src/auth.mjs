@@ -3,6 +3,9 @@ import { createPublicKey, createVerify } from "node:crypto";
 const SUPPORTED_ALGORITHM = "RS256";
 const DEFAULT_CLOCK_SKEW_SECONDS = 60;
 const DEFAULT_JWKS_CACHE_MS = 5 * 60 * 1000;
+const DEFAULT_JWKS_TIMEOUT_MS = 5_000;
+const DEFAULT_JWKS_MAX_RESPONSE_BYTES = 256 * 1024;
+const DEFAULT_UNKNOWN_KID_REFRESH_MS = 60_000;
 
 export class AuthenticationError extends Error {
   constructor(message, { status = 401, code = "invalid_token" } = {}) {
@@ -58,6 +61,9 @@ export function getAuthConfiguration(environment = process.env) {
     allowedSubjects,
     clockSkewSeconds: parseInteger(environment.AUTH_CLOCK_SKEW_SECONDS, DEFAULT_CLOCK_SKEW_SECONDS, 0, 900, "AUTH_CLOCK_SKEW_SECONDS"),
     jwksCacheMs: parseInteger(environment.AUTH_JWKS_CACHE_MS, DEFAULT_JWKS_CACHE_MS, 1000, 86_400_000, "AUTH_JWKS_CACHE_MS"),
+    jwksTimeoutMs: parseInteger(environment.AUTH_JWKS_TIMEOUT_MS, DEFAULT_JWKS_TIMEOUT_MS, 100, 30_000, "AUTH_JWKS_TIMEOUT_MS"),
+    jwksMaxResponseBytes: parseInteger(environment.AUTH_JWKS_MAX_RESPONSE_BYTES, DEFAULT_JWKS_MAX_RESPONSE_BYTES, 1024, 16 * 1024 * 1024, "AUTH_JWKS_MAX_RESPONSE_BYTES"),
+    unknownKidRefreshMs: parseInteger(environment.AUTH_UNKNOWN_KID_REFRESH_MS, DEFAULT_UNKNOWN_KID_REFRESH_MS, 1000, 86_400_000, "AUTH_UNKNOWN_KID_REFRESH_MS"),
   };
 }
 
@@ -98,30 +104,86 @@ function verifySignature(signingInput, signature, jwk) {
   catch { return false; }
 }
 
+async function readBoundedText(response, maxBytes) {
+  if (!response.body || typeof response.body.getReader !== "function") {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) throw new AuthenticationError("authorization key set is too large", { status: 503, code: "auth_unavailable" });
+    return text;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new AuthenticationError("authorization key set is too large", { status: 503, code: "auth_unavailable" });
+      }
+      chunks.push(Buffer.from(next.value));
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export function createAuthVerifier({ environment = process.env, fetchImplementation = fetch, now = () => Date.now() } = {}) {
   const configuration = getAuthConfiguration(environment);
   let cachedKeys = null;
   let cachedAt = 0;
+  let forcedRefreshAt = Number.NEGATIVE_INFINITY;
+  let refreshPromise = null;
 
-  async function loadKeys(force = false) {
-    if (!force && cachedKeys && now() - cachedAt < configuration.jwksCacheMs) return cachedKeys;
+  async function fetchKeys() {
+    const controller = new AbortController();
+    let timer;
     let response;
     try {
-      response = await fetchImplementation(configuration.jwksUrl, {
+      const request = fetchImplementation(configuration.jwksUrl, {
         headers: { accept: "application/json" },
         redirect: "error",
+        signal: controller.signal,
       });
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error("authorization key service timed out"));
+        }, configuration.jwksTimeoutMs);
+      });
+      response = await Promise.race([request, timeout]);
     } catch {
       throw new AuthenticationError("authorization key service is unavailable", { status: 503, code: "auth_unavailable" });
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     if (!response.ok) throw new AuthenticationError("authorization key service rejected the request", { status: 503, code: "auth_unavailable" });
     let payload;
-    try { payload = await response.json(); }
-    catch { throw new AuthenticationError("authorization key set is invalid", { status: 503, code: "auth_unavailable" }); }
+    try { payload = JSON.parse(await readBoundedText(response, configuration.jwksMaxResponseBytes)); }
+    catch (error) {
+      if (error instanceof AuthenticationError) throw error;
+      throw new AuthenticationError("authorization key set is invalid", { status: 503, code: "auth_unavailable" });
+    }
     if (!Array.isArray(payload?.keys)) throw new AuthenticationError("authorization key set is invalid", { status: 503, code: "auth_unavailable" });
     cachedKeys = payload.keys.filter((key) => key?.kid && key?.kty === "RSA");
     cachedAt = now();
     return cachedKeys;
+  }
+
+  async function loadKeys(force = false) {
+    const current = now();
+    if (!force && cachedKeys && current - cachedAt < configuration.jwksCacheMs) return cachedKeys;
+    if (force && cachedKeys && current - forcedRefreshAt < configuration.unknownKidRefreshMs) return cachedKeys;
+    if (refreshPromise) return refreshPromise;
+    if (force) forcedRefreshAt = current;
+    refreshPromise = fetchKeys();
+    try {
+      return await refreshPromise;
+    } finally {
+      refreshPromise = null;
+    }
   }
 
   async function authenticate(request) {

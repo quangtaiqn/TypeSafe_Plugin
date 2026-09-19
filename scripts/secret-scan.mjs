@@ -1,7 +1,11 @@
+import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+
+const execFileAsync = promisify(execFile);
 
 const excludedDirectories = new Set([".git", ".recovery", ".checkpoints", "node_modules", "coverage", "dist"]);
 const findingPatterns = [
@@ -16,9 +20,23 @@ function relative(root, value) {
   return path.relative(root, value).replaceAll("\\", "/") || ".";
 }
 
-function excludedFile(name) {
+function sensitiveFile(name) {
   const lower = name.toLowerCase();
-  return lower === ".env" || (lower.startsWith(".env.") && lower !== ".env.example") || lower === ".npmrc" || lower.endsWith(".log") || lower.endsWith(".pem") || lower.endsWith(".key");
+  return lower === ".env" || (lower.startsWith(".env.") && lower !== ".env.example") || lower === ".npmrc" || lower.endsWith(".log") || lower.endsWith(".pem") || lower.endsWith(".key") || lower.endsWith(".p12") || lower.endsWith(".pfx");
+}
+
+async function trackedFiles(root) {
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync("git", ["-C", root, "ls-files", "-z"], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }));
+  } catch (error) {
+    throw new Error(`tracked secret scan requires a Git worktree: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return stdout.split("\0").filter(Boolean).map((relativePath) => ({
+    relativePath: relativePath.replaceAll("\\", "/"),
+    fullPath: path.resolve(root, relativePath),
+    tracked: true,
+  }));
 }
 
 async function readText(filePath) {
@@ -29,46 +47,71 @@ async function readText(filePath) {
   return buffer.toString("utf8");
 }
 
-export async function scanTree(rootPath) {
+export async function scanTree(rootPath, { trackedOnly = false } = {}) {
   const root = path.resolve(rootPath);
   if (!(await stat(root)).isDirectory()) throw new Error("scan root must be a directory");
   const findings = [];
   const excluded = [];
 
-  async function visit(directory) {
-    const entries = await readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const fullPath = path.join(directory, entry.name);
-      const relativePath = relative(root, fullPath);
-      if (entry.isDirectory() && excludedDirectories.has(entry.name.toLowerCase())) {
-        excluded.push({ path: relativePath, reason: "local-or-generated-directory" });
-        continue;
-      }
-      if (entry.isDirectory()) {
-        await visit(fullPath);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      if (excludedFile(entry.name)) {
-        excluded.push({ path: relativePath, reason: "local-secret-or-log-file" });
-        continue;
-      }
-      const text = await readText(fullPath);
-      if (text === null) continue;
-      const lines = text.split(/\r?\n/);
-      lines.forEach((line, index) => {
-        for (const candidate of findingPatterns) {
-          if (candidate.pattern.test(line)) {
-            findings.push({ path: relativePath, line: index + 1, category: candidate.category });
-            break;
-          }
-        }
-      });
+  async function inspect(file) {
+    const relativePath = file.relativePath;
+    if (file.tracked && sensitiveFile(path.posix.basename(relativePath))) {
+      findings.push({ path: relativePath, line: 1, category: "tracked-sensitive-file" });
+      return;
     }
+    const text = await readText(file.fullPath);
+    if (text === null) return;
+    const lines = text.split(/\r?\n/);
+    lines.forEach((line, index) => {
+      for (const candidate of findingPatterns) {
+        if (candidate.pattern.test(line)) {
+          findings.push({ path: relativePath, line: index + 1, category: candidate.category });
+          break;
+        }
+      }
+    });
   }
 
-  await visit(root);
+  if (trackedOnly) {
+    for (const file of await trackedFiles(root)) {
+      const parts = file.relativePath.split("/").map((part) => part.toLowerCase());
+      if (parts.some((part) => excludedDirectories.has(part))) {
+        findings.push({ path: file.relativePath, line: 1, category: "tracked-generated-file" });
+        continue;
+      }
+      if (!(await stat(file.fullPath)).isFile()) {
+        findings.push({ path: file.relativePath, line: 1, category: "tracked-file-missing" });
+        continue;
+      }
+      await inspect(file);
+    }
+  } else {
+
+    async function visit(directory) {
+      const entries = await readdir(directory, { withFileTypes: true });
+      entries.sort((left, right) => left.name.localeCompare(right.name));
+      for (const entry of entries) {
+        const fullPath = path.join(directory, entry.name);
+        const relativePath = relative(root, fullPath);
+        if (entry.isDirectory() && excludedDirectories.has(entry.name.toLowerCase())) {
+          excluded.push({ path: relativePath, reason: "local-or-generated-directory" });
+          continue;
+        }
+        if (entry.isDirectory()) {
+          await visit(fullPath);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        if (sensitiveFile(entry.name)) {
+          excluded.push({ path: relativePath, reason: "local-secret-or-log-file" });
+          continue;
+        }
+        await inspect({ fullPath, relativePath, tracked: false });
+      }
+    }
+
+    await visit(root);
+  }
   findings.sort((left, right) => left.path.localeCompare(right.path) || left.line - right.line || left.category.localeCompare(right.category));
   excluded.sort((left, right) => left.path.localeCompare(right.path));
   return { clean: findings.length === 0, findings, excluded };
@@ -79,7 +122,7 @@ async function main() {
   const rootIndex = argv.indexOf("--root");
   const root = rootIndex >= 0 ? argv[rootIndex + 1] : ".";
   if (!root || root.startsWith("--")) throw new Error("--root requires a directory");
-  const result = await scanTree(root);
+  const result = await scanTree(root, { trackedOnly: argv.includes("--tracked") });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   if (!result.clean) process.exitCode = 1;
 }

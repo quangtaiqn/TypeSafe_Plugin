@@ -28,6 +28,7 @@ function toRequest(request, body, host, controller) {
     if (Array.isArray(value)) for (const item of value) headers.append(name, item);
     else if (value !== undefined) headers.set(name, value);
   }
+  headers.set("x-typesafe-client-address", request.socket.remoteAddress || "unknown");
   const protocol = headers.get("x-forwarded-proto")?.split(",", 1)[0]?.trim() || "http";
   const url = `${protocol}://${host}${request.url || "/"}`;
   const init = { method: request.method, headers, signal: controller.signal };
@@ -61,7 +62,7 @@ export async function startHttpServer({ environment = process.env, fetchImplemen
     request.on("aborted", () => controller.abort());
     response.on("close", () => { if (!response.writableEnded) controller.abort(); });
     try {
-      const body = await readBody(request, app.configuration.maxRequestBytes);
+      const body = await readBody(request, app.requestMaxBytes);
       const hostHeader = request.headers.host || "localhost";
       const webRequest = toRequest(request, body, hostHeader, controller);
       const webResponse = await app.fetch(webRequest);

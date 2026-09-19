@@ -11,10 +11,14 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { scanTree } from "./secret-scan.mjs";
 
 const COMPLETE_MARKER = "COMPLETE";
 const MANIFEST = "manifest.json";
 const SECRET_VALUE = /(?:bearer\s+|sk-[a-z0-9_-]{8,}|typesafe_api_key\s*=|api[_-]?key\s*[:=]|secret[_-]?key\s*[:=]|token\s*[:=])/i;
+const ALLOWED_ROOT_FILES = new Set([".dockerignore", ".env.example", ".gitignore", "LICENSE", "README.md", "package.json", "package-lock.json"]);
+const ALLOWED_TOP_LEVEL_DIRECTORIES = new Set([".agents", ".github", "bundles", "deploy", "docs", "evidence", "examples", "plugins", "scripts", "service", "skills", "src", "submission", "test"]);
+const ALLOWED_EXTENSIONS = new Set([".example", ".json", ".lock", ".md", ".mjs", ".toml", ".yaml", ".yml"]);
 
 function parseArgs(argv) {
   const values = { _: [] };
@@ -63,13 +67,29 @@ function secretPath(relativePath) {
   const normalized = relativePath.replaceAll("\\", "/");
   const basename = path.posix.basename(normalized).toLowerCase();
   if (basename === ".env" || (basename.startsWith(".env.") && basename !== ".env.example")) return true;
-  if (basename === ".npmrc" || basename.endsWith(".pem") || basename.endsWith(".key")) return true;
+  if (basename === ".npmrc" || basename.endsWith(".pem") || basename.endsWith(".key") || basename.endsWith(".p12") || basename.endsWith(".pfx")) return true;
   return normalized.split("/").some((part) => [".git", "node_modules", ".recovery", ".checkpoints", "credentials", "secrets"].includes(part.toLowerCase()));
 }
 
 function ignoredPath(relativePath) {
   const normalized = relativePath.replaceAll("\\", "/");
   return secretPath(normalized) || normalized.endsWith(".log") || normalized.endsWith(".tmp") || normalized.endsWith(".bak");
+}
+
+function allowlistedPath(relativePath) {
+  const normalized = relativePath.replaceAll("\\", "/");
+  if (ALLOWED_ROOT_FILES.has(normalized)) return true;
+  const parts = normalized.split("/");
+  if (!ALLOWED_TOP_LEVEL_DIRECTORIES.has(parts[0])) return false;
+  const basename = parts.at(-1).toLowerCase();
+  if ([".dockerignore", ".gitignore", "dockerfile"].includes(basename)) return true;
+  const extension = path.posix.extname(basename);
+  return ALLOWED_EXTENSIONS.has(extension) || basename.endsWith(".example");
+}
+
+function allowlistedDirectory(relativePath) {
+  const normalized = relativePath.replaceAll("\\", "/");
+  return ALLOWED_TOP_LEVEL_DIRECTORIES.has(normalized.split("/")[0]);
 }
 
 async function walk(root, current = root, result = []) {
@@ -80,8 +100,10 @@ async function walk(root, current = root, result = []) {
     const relativePath = path.relative(root, fullPath).replaceAll("\\", "/");
     if (ignoredPath(relativePath)) continue;
     if (entry.isDirectory()) {
+      if (!allowlistedDirectory(relativePath)) throw new Error(`source directory is not allowlisted: ${relativePath}`);
       await walk(root, fullPath, result);
     } else if (entry.isFile()) {
+      if (!allowlistedPath(relativePath)) throw new Error(`source file is not allowlisted: ${relativePath}`);
       result.push({ fullPath, relativePath });
     } else {
       throw new Error(`unsupported source entry: ${relativePath}`);
@@ -119,6 +141,11 @@ async function createCheckpoint(args) {
   const sourceRoot = absolute(required(args, "source"));
   const recoveryRoot = absolute(required(args, "recovery-root"));
   if (!(await pathExists(sourceRoot)) || !(await stat(sourceRoot)).isDirectory()) throw new Error("source must be an existing directory");
+  const secretScan = await scanTree(sourceRoot);
+  if (!secretScan.clean) {
+    const locations = secretScan.findings.map((finding) => `${finding.path}:${finding.line}`).join(", ");
+    throw new Error(`source contains secret-like content: ${locations}`);
+  }
   await mkdir(recoveryRoot, { recursive: true });
   const destination = path.join(recoveryRoot, checkpointId);
   if (await pathExists(destination)) throw new Error(`checkpoint already exists: ${checkpointId}`);
@@ -164,7 +191,7 @@ async function readManifest(checkpointPath) {
   if (!["WIP", "COMPLETE"].includes(value.status)) throw new Error("manifest status is invalid");
   if (!Array.isArray(value.files) || value.files.length === 0) throw new Error("manifest files are missing");
   for (const file of value.files) {
-    if (!safeRelative(file.path) || !Number.isSafeInteger(file.size) || file.size < 0 || !/^[a-f0-9]{64}$/.test(file.sha256)) {
+    if (!safeRelative(file.path) || !allowlistedPath(file.path) || !Number.isSafeInteger(file.size) || file.size < 0 || !/^[a-f0-9]{64}$/.test(file.sha256)) {
       throw new Error(`manifest file entry is invalid: ${file.path}`);
     }
     const filePath = path.join(root, file.path);

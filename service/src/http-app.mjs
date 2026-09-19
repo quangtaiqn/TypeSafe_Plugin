@@ -80,6 +80,11 @@ export function createServiceApp({ environment = process.env, fetchImplementatio
   const auth = createAuthVerifier({ environment, fetchImplementation, now });
   const limitsConfiguration = getLimitConfiguration(environment);
   const limits = createRateLimiter(limitsConfiguration, now);
+  const authAttemptLimits = createRateLimiter({
+    windowMs: limitsConfiguration.authWindowMs,
+    maxRequestsPerWindow: limitsConfiguration.maxAuthRequestsPerWindow,
+    maxServiceRequestsPerWindow: limitsConfiguration.maxAuthRequestsPerWindow,
+  }, now);
   const concurrencyGate = createConcurrencyGate(configuration.maxConcurrent);
   const mcp = createMcpHandler(
     () => createServerImplementation({ configuration, concurrencyGate, fetchImplementation }),
@@ -99,6 +104,7 @@ export function createServiceApp({ environment = process.env, fetchImplementatio
     if (url.pathname !== "/mcp") return jsonResponse({ error: { code: "not_found", message: "Not found", retryable: false } }, 404);
     try {
       validateRequestOrigin(request, environment);
+      authAttemptLimits.take(request.headers.get("x-typesafe-client-address") || "unknown");
       const identity = await auth.authenticate(request);
       limits.take(identity.principal);
       const requestWithLimit = await boundedRequest(request, limitsConfiguration.maxRequestBytes);
@@ -113,6 +119,7 @@ export function createServiceApp({ environment = process.env, fetchImplementatio
 
   return {
     configuration,
+    requestMaxBytes: limitsConfiguration.maxRequestBytes,
     auth,
     limits,
     fetch: fetchHandler,

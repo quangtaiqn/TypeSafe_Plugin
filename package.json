@@ -8,7 +8,7 @@
     "start:cloud": "node service/src/main.mjs",
     "check": "node --check src/index.mjs && node --check src/server.mjs && node --check src/schema.mjs && node --check src/typesafe-client.mjs && node --check service/src/auth.mjs && node --check service/src/limits.mjs && node --check service/src/logging.mjs && node --check service/src/http-app.mjs && node --check service/src/main.mjs && node --check scripts/recovery.mjs && node --check scripts/secret-scan.mjs",
     "test": "node --test",
-    "secret-scan": "node scripts/secret-scan.mjs --root .",
+    "secret-scan": "node scripts/secret-scan.mjs --root . --tracked",
     "validate:plugin": "node scripts/validate-plugin.mjs plugins/typesafe"
   },
   "keywords": [

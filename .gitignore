@@ -1,6 +1,11 @@
 .env
 .env.*
 !.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
 node_modules/
 service/node_modules/
 *.local
