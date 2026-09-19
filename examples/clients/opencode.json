@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "typesafe-jev": {
+      "type": "local",
+      "command": [
+        "node",
+        "<TYPESAFE_MCP_ROOT>\\src\\index.mjs"
+      ],
+      "environment": {
+        "TYPESAFE_API_KEY": "REPLACE_WITH_TYPESAFE_API_KEY",
+        "TYPESAFE_BASE_URL": "https://api.typesafe.ai",
+        "TYPESAFE_MODEL": "jev-latest",
+        "TYPESAFE_TIMEOUT_MS": "30000",
+        "TYPESAFE_MAX_RESPONSE_BYTES": "4194304"
+      },
+      "enabled": true
+    }
+  }
+}

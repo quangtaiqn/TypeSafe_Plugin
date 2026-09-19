@@ -1,0 +1,29 @@
+{
+  "state": {
+    "ticket": "Khach hang bi tru tien hai lan",
+    "request": "Muon hoan lai khoan tru thua"
+  },
+  "questions": {
+    "department": {
+      "type": "choice",
+      "instructions": "Bo phan nao nen xu ly?",
+      "criteria": {
+        "billing": "Thanh toan va hoan tien",
+        "other": null
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "Muc do gap cua yeu cau?",
+      "criteria": [
+        "Khong gap",
+        "Can xu ly som",
+        "Can xu ly hom nay"
+      ]
+    },
+    "refund_requested": {
+      "type": "noul",
+      "instructions": "Khach hang co yeu cau hoan tien khong?"
+    }
+  }
+}

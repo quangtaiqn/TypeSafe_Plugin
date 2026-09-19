@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+node_modules/
+service/node_modules/
+*.local
+*.log
+.recovery/
+.checkpoints/
+coverage/
+dist/
+*.tgz

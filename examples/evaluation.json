@@ -1,0 +1,26 @@
+{
+  "state": "Khách hàng bị trừ tiền hai lần và muốn hoàn lại khoản trừ thừa hôm nay.",
+  "questions": {
+    "refund_requested": {
+      "type": "noul",
+      "instructions": "Khách hàng có yêu cầu hoàn tiền không?"
+    },
+    "department": {
+      "type": "choice",
+      "instructions": "Bộ phận nào phù hợp nhất để xử lý?",
+      "criteria": {
+        "billing": "Thanh toán và hoàn tiền",
+        "other": "Trường hợp khác"
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "Mức độ gấp được nêu trong yêu cầu?",
+      "criteria": [
+        "Không nêu thời hạn",
+        "Muốn xử lý sớm",
+        "Cần xử lý hôm nay"
+      ]
+    }
+  }
+}

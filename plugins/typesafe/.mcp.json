@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "typesafe": {
+      "type": "http",
+      "url": "https://mcp.example.invalid/typesafe/mcp",
+      "headers": {
+        "Authorization": "Bearer ${TYPESAFE_OAUTH_TOKEN}"
+      }
+    }
+  }
+}

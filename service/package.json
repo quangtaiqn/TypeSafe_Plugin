@@ -1,0 +1,13 @@
+{
+  "name": "typesafe-mcp-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloud entrypoint metadata for the TypeSafe MCP service; dependencies are installed from the repository root.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node src/main.mjs"
+  }
+}

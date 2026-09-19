@@ -1,0 +1,15 @@
+{
+  "success": [
+    {"id":"choice-routing","type":"choice","expected":"one configured option and full probability map"},
+    {"id":"score-rubric","type":"score","expected":"ordered score, legend, probabilities, and confidence"},
+    {"id":"noul-probability","type":"noul","expected":"noul in [0,1] without invented confidence"},
+    {"id":"mixed-batch","type":"batch","expected":"Choice/Noul/Score share one state and one call"},
+    {"id":"structured-descriptions","type":"structured-input","expected":"objects and arrays remain intact"}
+  ],
+  "negative": [
+    {"id":"invalid-schema","expected":"bounded invalid_input error; no upstream call"},
+    {"id":"expired-or-wrong-subject","expected":"401/403; no upstream call"},
+    {"id":"timeout-or-oversize","expected":"bounded retry metadata/error; no blind retry"}
+  ],
+  "status": "FIXTURES_ONLY_UNTIL_LIVE_DEPLOYMENT"
+}

@@ -1,0 +1,27 @@
+{
+  "name": "typesafe",
+  "version": "0.1.0",
+  "description": "Typed Choice, Noul, and Score judgments through the TypeSafe Jev System One MCP tool.",
+  "author": {
+    "name": "Quang"
+  },
+  "homepage": "https://github.com/quangtaiqn/TypeSafe_Plugin",
+  "repository": "https://github.com/quangtaiqn/TypeSafe_Plugin",
+  "license": "MIT",
+  "keywords": ["typesafe", "jev", "mcp", "structured-decisions"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "TypeSafe",
+    "shortDescription": "Typed semantic judgments with Jev.",
+    "longDescription": "Use the system_one MCP tool for narrow Choice, Noul, and Score judgments while the main model retains context, thresholds, and final actions.",
+    "developerName": "Quang",
+    "category": "Productivity",
+    "capabilities": ["Structured output", "MCP"],
+    "defaultPrompt": [
+      "Classify this state with explicit criteria.",
+      "Score this case on the supplied ordered rubric.",
+      "Estimate this yes/no claim without inventing confidence."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

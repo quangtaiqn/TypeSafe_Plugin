@@ -1,0 +1,22 @@
+{
+  "format": "typesafe-cloud-bundle-v1",
+  "plugin": "typesafe",
+  "version": "0.1.0",
+  "skill": {
+    "source": "plugins/typesafe/skills/typesafe-ai/SKILL.md",
+    "sha256": "3b8808404111d3b9827303e651e3ab8e928af0e2215327f5fbfd76db6bd2e4c0"
+  },
+  "mcp": {
+    "transport": "streamable-http",
+    "path": "/mcp",
+    "auth": "oauth2-jwt-jwks",
+    "endpointStatus": "PENDING_CONFIG"
+  },
+  "surfaces": {
+    "web": "WAITING_FOR_ACCOUNT_ACCESS",
+    "codexCloud": "UNKNOWN",
+    "mobile": "MOBILE_PREPARED"
+  },
+  "submission": "DRAFT_ONLY",
+  "containsSecrets": false
+}

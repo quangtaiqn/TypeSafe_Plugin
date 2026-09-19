@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "typesafe-jev": {
+      "command": "node",
+      "args": [
+        "<TYPESAFE_MCP_ROOT>\\src\\index.mjs"
+      ],
+      "env": {
+        "TYPESAFE_API_KEY": "REPLACE_WITH_TYPESAFE_API_KEY",
+        "TYPESAFE_BASE_URL": "https://api.typesafe.ai",
+        "TYPESAFE_MODEL": "jev-latest",
+        "TYPESAFE_TIMEOUT_MS": "30000",
+        "TYPESAFE_MAX_RESPONSE_BYTES": "4194304"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+node_modules
+.env
+.env.*
+!.env.example
+.git
+.recovery
+.checkpoints
+coverage
+bundles
+evidence/raw

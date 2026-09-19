@@ -1,0 +1,18 @@
+{
+  "status": "MOBILE_PREPARED",
+  "version": "0.1.0",
+  "backend": "shared-cloud-mcp",
+  "skillSource": "plugins/typesafe/skills/typesafe-ai/SKILL.md",
+  "nativeE2E": {
+    "ios": "NOT_RUN",
+    "android": "NOT_RUN"
+  },
+  "preparedChecks": [
+    "No local paths or stdio commands in the mobile metadata",
+    "OAuth expiry/revoke/reconnect scenarios documented",
+    "Tool-first structured responses; no inference-generating UI",
+    "Choice/Noul/Score and batch canary fixtures available"
+  ],
+  "activationGate": "private mobile support or approved directory distribution",
+  "containsSecrets": false
+}
